@@ -32,7 +32,7 @@ Comments:
 // #ENCODING_INHERIT_FROM_PARENT
 // #ENCODING_INHERIT_FROM_PROGRAM
 
-#define_constant _subscribe_identifier				19
+#define_constant _subscribe_char_pos				19
 
 /*
 #HELP_BEGIN
@@ -192,12 +192,17 @@ STRING_Function HeartbeatMonitor(STRING heartbeat_token)
 		HeartbeatWait();
 }
 
+Function ProgramLevelMonitor()
+{
+	//
+}
+
 Function SubscribeInterpreter(STRING subscribe_token)
 {
-	if (FIND(_heartbeat, subscribe_token, _subscribe_identifier))
-	{
-		HeartbeatMonitor(MID(subscribe_token, _subscribe_identifier, LEN(subscribe_token)- _subscribe_identifier));
- 	}
+	if (FIND(_heartbeat, subscribe_token, _subscribe_char_pos))
+		HeartbeatMonitor(MID(subscribe_token, _subscribe_char_pos, LEN(subscribe_token)- _subscribe_char_pos));
+	else if (Find(_pgm_level, subscribe_token, _subscribe_char_pos))
+		ProgramLevelMonitor();
 }
 
 STRING_Function BufferParse(STRING buffer_collect)
