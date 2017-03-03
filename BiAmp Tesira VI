@@ -57,7 +57,7 @@ ANALOG_INPUT		tcp_client_status;
 BUFFER_INPUT		biamp_rx$[500];
 
 DIGITAL_OUTPUT		biamp_initialized, biamp_subscribed, heartbeat_offline;
-// ANALOG_OUTPUT
+ANALOG_OUTPUT		program_volume;
 STRING_OUTPUT		biamp_tx$;
 
 /*******************************************************************************************
@@ -115,23 +115,34 @@ MyStruct1 struct;
   Note:  Be sure to initialize all declared STRING variables as needed
          For example, in Function Main: myString = "";
 *******************************************************************************************/
-// INTEGER
+INTEGER		_pgm_level_subscribed, _pgm_state_subscribed, _heartbeat_subscribed;
 // LONG_INTEGER
 // SIGNED_INTEGER
 // SIGNED_LONG_INTEGER
-STRING		_will[4], _do[4], _dont[4], _wont[4], _delim[4], _negotiation_approved[50], _pgm_level[15], _heartbeat[15],
-			_subscription_time[4], buffer_collect[256];
+STRING		_will[4], _do[4], _dont[4], _wont[4], _delim[4], _negotiation_approved[50], _subscribe_token[30], _pgm_level[15],
+			_pgm_level_token[50], _pgm_state[15], _pgm_state_token[50], _heartbeat[15], _heartbeat_token[50], _subscription_time[4];
+			/*buffer_collect[256]*/
 /*******************************************************************************************
   Functions
   (Add any additional functions here)
   Note:  Functions must be physically placed before the location in
          the code that calls them.
 *******************************************************************************************/
+Function BiAmpSubscribeConfirm(STRING buffer_collect)
+{
+	if (_heartbeat_subscribed && _pgm_level_subscribed)
+		biamp_subscribed = 1;
+	else if (FIND(_heartbeat_token, buffer_collect) && !_heartbeat_subscribed)
+		_heartbeat_subscribed = 1;
+	else if (FIND(_pgm_level_token, buffer_collect) && !_pgm_level_subscribed)
+		_pgm_level_subscribed = 1;
+}
+
 Function BiAmpSubscribe()
 {
-	biamp_tx$ = _pgm_level + " subscribe level 1 " + _pgm_level + " " + _subscription_time + _delim;
-	delay(100);
 	biamp_tx$ = _heartbeat + " subscribe state 1 " + _heartbeat + _delim;
+	delay(100);
+	biamp_tx$ = _pgm_level + " subscribe level 1 " + _pgm_level + " " + _subscription_time + _delim;
 }
 
 String_Function EmptyBufferForNegotiation()
@@ -192,36 +203,40 @@ STRING_Function HeartbeatMonitor(STRING heartbeat_token)
 		HeartbeatWait();
 }
 
-Function ProgramLevelMonitor()
+Function ProgramLevelMonitor(STRING pgm_level_token)
 {
-	//
+	PRINT("PGM Level: %s\n", pgm_level_token);
 }
 
 Function SubscribeInterpreter(STRING subscribe_token)
 {
+	STRING instance_token[50];
+	instance_token = MID(subscribe_token, _subscribe_char_pos, LEN(subscribe_token) - _subscribe_char_pos);
+
 	if (FIND(_heartbeat, subscribe_token, _subscribe_char_pos))
-		HeartbeatMonitor(MID(subscribe_token, _subscribe_char_pos, LEN(subscribe_token)- _subscribe_char_pos));
+		HeartbeatMonitor(instance_token);
 	else if (Find(_pgm_level, subscribe_token, _subscribe_char_pos))
-		ProgramLevelMonitor();
+		ProgramLevelMonitor(instance_token);
 }
 
-STRING_Function BufferParse(STRING buffer_collect)
+STRING_Function BufferParse(STRING from_buffer)
 {
-	if (FIND("! \"publishToken\":", buffer_collect, 1))
-	{
-		SubscribeInterpreter(buffer_collect);
-	}
+	if(!biamp_subscribed)
+		BiAmpSubScribeConfirm(from_buffer);
+	else if(FIND(_subscribe_token, from_buffer, 1) && biamp_subscribed)
+		SubscribeInterpreter(from_buffer);
 }
 
 STRING_Function BufferCollect()
 {
+	STRING buffer_collect[150];
+
 	do
 	{
 	 	buffer_collect = buffer_collect + chr(getc(biamp_rx$));
 	} until (len(biamp_rx$) = 0);
 
 	BufferParse(buffer_collect);
-	buffer_collect = "";
 }
 
 
@@ -248,18 +263,15 @@ CHANGE biamp_rx$
 {
 	if(!biamp_initialized)
 		NegotiateInitialize();
-
-	if(biamp_initialized)
+	else
 		BufferCollect();
-
 }
 
 CHANGE tcp_client_status
 {
 	if(tcp_client_status != 2)
-	{
 		biamp_initialized = 0;
-	}
+		biamp_subscribed = 0;
 }
 
 
@@ -316,8 +328,13 @@ Function Main()
 	_negotiation_approved = "Welcome to the Tesira Text Protocol Server...";
 	_subscription_time = "250";
 
+
+	_subscribe_token = "! \"publishToken\":\"";
 	_pgm_level = "Level1";
+	_pgm_level_token = _subscribe_token + _pgm_level;
+	_pgm_state = "Level1";
 	_heartbeat = "Heartbeat";
+	_heartbeat_token= _subscribe_token + _heartbeat;
 
     // TODO:  Add code here
     // Initialize declared global and local variables/arrays as needed.
