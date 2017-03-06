@@ -121,21 +121,20 @@ INTEGER		_pgm_level_subscribed, _pgm_state_subscribed, _heartbeat_subscribed;
 // SIGNED_LONG_INTEGER
 STRING		_will[4], _do[4], _dont[4], _wont[4], _delim[4], _negotiation_approved[50], _subscribe_token[30], _pgm_level[15],
 			_pgm_level_token[50], _pgm_state[15], _pgm_state_token[50], _heartbeat[15], _heartbeat_token[50], _subscription_time[4];
-			/*buffer_collect[256]*/
-/*******************************************************************************************
-  Functions
-  (Add any additional functions here)
-  Note:  Functions must be physically placed before the location in
-         the code that calls them.
-*******************************************************************************************/
+/*=========================================================================================*/
+
+
+/*=========================================================================================*/
 Function BiAmpSubscribeConfirm(STRING buffer_collect)
 {
-	if (_heartbeat_subscribed && _pgm_level_subscribed)
+	if (_heartbeat_subscribed && _pgm_level_subscribed && _pgm_state_subscribed)
 		biamp_subscribed = 1;
 	else if (FIND(_heartbeat_token, buffer_collect) && !_heartbeat_subscribed)
 		_heartbeat_subscribed = 1;
 	else if (FIND(_pgm_level_token, buffer_collect) && !_pgm_level_subscribed)
 		_pgm_level_subscribed = 1;
+	else if (FIND(_pgm_state_token, buffer_collect) && !_pgm_state_subscribed)
+		_pgm_state_subscribed = 1;
 }
 
 Function BiAmpSubscribe()
@@ -143,6 +142,8 @@ Function BiAmpSubscribe()
 	biamp_tx$ = _heartbeat + " subscribe state 1 " + _heartbeat + _delim;
 	delay(100);
 	biamp_tx$ = _pgm_level + " subscribe level 1 " + _pgm_level + " " + _subscription_time + _delim;
+	delay(100);
+	biamp_tx$ = _pgm_level + " subscribe mute 1 " + _pgm_state + " " + _delim;
 }
 
 String_Function EmptyBufferForNegotiation()
@@ -194,18 +195,35 @@ Function HeartbeatWait()
 
 STRING_Function HeartbeatMonitor(STRING heartbeat_token)
 {
-	IF(FIND("true", heartbeat_token, FIND(":", heartbeat_token, 1) + 1))
-	{
 		CancelWait(WaitHeartbeat);
 		heartbeat_offline = 0;
-	}
-	ELSE
 		HeartbeatWait();
+}
+
+Function ProgramMuteMonitor(STRING pgm_mute_token)
+{
+	PRINT("Mute Status UPDATED");
 }
 
 Function ProgramLevelMonitor(STRING pgm_level_token)
 {
-	PRINT("PGM Level: %s\n", pgm_level_token);
+	INTEGER val_pos;
+	STRING abs_volume_level[10];
+
+	val_pos = REVERSEFIND(":", pgm_level_token);
+	abs_volume_level = RIGHT(pgm_level_token, (LEN(pgm_level_token)- val_pos));
+
+	if(FIND("-", abs_volume_level))
+		program_volume = 100 - ATOI(abs_volume_level);
+	else
+		program_volume = ATOI(abs_volume_level);
+	//NEED TO FIGURE OUT NOW TO MAKE IT SIGNED
+	//======================================================================================================================
+
+
+	//======================================================================================================================
+
+	//======================================================================================================================
 }
 
 Function SubscribeInterpreter(STRING subscribe_token)
@@ -215,7 +233,9 @@ Function SubscribeInterpreter(STRING subscribe_token)
 
 	if (FIND(_heartbeat, subscribe_token, _subscribe_char_pos))
 		HeartbeatMonitor(instance_token);
-	else if (Find(_pgm_level, subscribe_token, _subscribe_char_pos))
+	else if (FIND(_pgm_state, subscribe_token, _subscribe_char_pos))
+		ProgramMuteMonitor(instance_token);
+	else if (FIND(_pgm_level, subscribe_token, _subscribe_char_pos))
 		ProgramLevelMonitor(instance_token);
 }
 
@@ -318,7 +338,6 @@ SOCKETSTATUS
 
 Function Main()
 {
-	INTEGER heartbeat_check;
 
 	_will = "\xFB";
 	_do = "\xFD";
@@ -332,9 +351,12 @@ Function Main()
 	_subscribe_token = "! \"publishToken\":\"";
 	_pgm_level = "Level1";
 	_pgm_level_token = _subscribe_token + _pgm_level;
-	_pgm_state = "Level1";
+	_pgm_state = "Level1Mute";
+	_pgm_state_token = _subscribe_token + _pgm_state;
 	_heartbeat = "Heartbeat";
 	_heartbeat_token= _subscribe_token + _heartbeat;
+
+	heartbeat_offline = 1;
 
     // TODO:  Add code here
     // Initialize declared global and local variables/arrays as needed.
