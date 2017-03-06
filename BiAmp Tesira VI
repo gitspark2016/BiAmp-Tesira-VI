@@ -52,13 +52,13 @@ Comments:
   (Uncomment and declare inputs and outputs as needed)
 *******************************************************************************************/
 DIGITAL_INPUT		device_reboot;
-ANALOG_INPUT		tcp_client_status;
+ANALOG_INPUT		_skip_, _skip_, _skip_,_skip_, program_volume_in, _skip_, tcp_client_status;
 // STRING_INPUT
 BUFFER_INPUT		biamp_rx$[500];
 
-DIGITAL_OUTPUT		biamp_initialized, biamp_subscribed, heartbeat_offline;
+DIGITAL_OUTPUT		biamp_initialized, biamp_subscribed, heartbeat_offline, _skip_, program_muted;
 ANALOG_OUTPUT		program_volume;
-STRING_OUTPUT		biamp_tx$;
+STRING_OUTPUT		_skip_, _skip_, biamp_tx$;
 
 /*******************************************************************************************
   SOCKETS
@@ -202,7 +202,16 @@ STRING_Function HeartbeatMonitor(STRING heartbeat_token)
 
 Function ProgramMuteMonitor(STRING pgm_mute_token)
 {
-	PRINT("Mute Status UPDATED");
+	INTEGER val_pos;
+	STRING mute_status[15];
+
+	val_pos = REVERSEFIND(":", pgm_mute_token);
+	mute_status = RIGHT(pgm_mute_token, (LEN(pgm_mute_token) - val_pos));
+
+	if(FIND("true", mute_status))
+		program_muted = 1;
+	else if (FIND("false", mute_status))
+		program_muted = 0;
 }
 
 Function ProgramLevelMonitor(STRING pgm_level_token)
@@ -214,16 +223,9 @@ Function ProgramLevelMonitor(STRING pgm_level_token)
 	abs_volume_level = RIGHT(pgm_level_token, (LEN(pgm_level_token)- val_pos));
 
 	if(FIND("-", abs_volume_level))
-		program_volume = 100 - ATOI(abs_volume_level);
+		program_volume = -1 * ATOI(abs_volume_level);
 	else
 		program_volume = ATOI(abs_volume_level);
-	//NEED TO FIGURE OUT NOW TO MAKE IT SIGNED
-	//======================================================================================================================
-
-
-	//======================================================================================================================
-
-	//======================================================================================================================
 }
 
 Function SubscribeInterpreter(STRING subscribe_token)
@@ -278,6 +280,10 @@ RELEASE input
 }
 */
 
+CHANGE program_volume_in
+{
+		biamp_tx$ = _pgm_level + " set level 1 " + LTOA(program_volume_in) + " " + _delim;
+}
 
 CHANGE biamp_rx$
 {
