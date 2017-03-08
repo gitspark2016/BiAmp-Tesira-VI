@@ -282,7 +282,13 @@ RELEASE input
 
 CHANGE program_volume_in
 {
-		biamp_tx$ = _pgm_level + " set level 1 " + LTOA(program_volume_in) + " " + _delim;
+ signed_integer value_in;
+ value_in = program_volume_in;
+
+ if(value_in < 0)
+	biamp_tx$ = _pgm_level + " set level 1 -" + ITOA(-value_in) + " " + _delim;
+ else
+	biamp_tx$ = _pgm_level + " set level 1 " + ITOA(value_in) + " " + _delim;
 }
 
 CHANGE biamp_rx$
