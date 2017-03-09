@@ -116,11 +116,12 @@ MyStruct1 struct;
          For example, in Function Main: myString = "";
 *******************************************************************************************/
 INTEGER		_pgm_level_subscribed, _pgm_state_subscribed, _heartbeat_subscribed;
-// LONG_INTEGER
+// LONG_INTEGER//
 // SIGNED_INTEGER
 // SIGNED_LONG_INTEGER
-STRING		_will[4], _do[4], _dont[4], _wont[4], _delim[4], _negotiation_approved[50], _subscribe_token[30], _pgm_level[15],
-			_pgm_level_token[50], _pgm_state[15], _pgm_state_token[50], _heartbeat[15], _heartbeat_token[50], _subscription_time[4];
+STRING		_buffer_collect[256], _will[4], _do[4], _dont[4], _wont[4], _delim[4], _negotiation_approved[50], _subscribe_token[30],
+			_pgm_level[15], _pgm_level_token[50], _pgm_state[15], _pgm_state_token[50], _heartbeat[15], _heartbeat_token[50],
+			_subscription_time[4];
 /*=========================================================================================*/
 
 
@@ -146,45 +147,33 @@ Function BiAmpSubscribe()
 	biamp_tx$ = _pgm_level + " subscribe mute 1 " + _pgm_state + " " + _delim;
 }
 
-String_Function EmptyBufferForNegotiation()
+String_Function NegotiateInitialize(STRING from_buffer)
 {
-	integer buffer_pop;
-	string negotiate_string[256];
+	STRING negotiate_receive[256];
+	STRING negotiate_send[256];
 
-	do
-		{
-			buffer_pop = getc(biamp_rx$);
+	negotiate_receive = from_buffer;
 
-			if (chr(buffer_pop) = _do)
-			{
-				negotiate_string = negotiate_string + _wont;
-			}
-			else if (chr(buffer_pop) = _will)
-			{
-            	negotiate_string = negotiate_string + _dont;
-			}
-			else
-			{
-            	negotiate_string = negotiate_string + chr(buffer_pop);
-			}
-		} until (len(biamp_rx$) = 0);
-
-	return(negotiate_string);
-}
-
-Function NegotiateInitialize()
-{
-	string temp_string[256];
-
-	temp_string = EmptyBufferForNegotiation();
-
-	if (FIND(_negotiation_approved, temp_string, 1))
+	if (FIND(_negotiation_approved, negotiate_receive, 1))
 	{
 		biamp_initialized = 1;
 		BiAmpSubscribe();
 	}
 	else
-       	biamp_tx$ = temp_string + _delim;
+	{
+		do
+		{
+			PRINT("%d\n", getc(negotiate_receive));
+			if(chr(getc(negotiate_receive)) = _do)
+				negotiate_send = negotiate_send + _wont;
+			else if(chr(getc(negotiate_receive)) = _will)
+	           	negotiate_send = negotiate_send + _dont;
+			else
+	           	negotiate_send = negotiate_send + chr(getc(negotiate_receive));
+		}until (len(negotiate_receive) = 0);
+
+   		biamp_tx$ = negotiate_send + _delim;
+   	}
 }
 
 Function HeartbeatWait()
@@ -241,27 +230,6 @@ Function SubscribeInterpreter(STRING subscribe_token)
 		ProgramLevelMonitor(instance_token);
 }
 
-STRING_Function BufferParse(STRING from_buffer)
-{
-	if(!biamp_subscribed)
-		BiAmpSubScribeConfirm(from_buffer);
-	else if(FIND(_subscribe_token, from_buffer, 1) && biamp_subscribed)
-		SubscribeInterpreter(from_buffer);
-}
-
-STRING_Function BufferCollect()
-{
-	STRING buffer_collect[150];
-
-	do
-	{
-	 	buffer_collect = buffer_collect + chr(getc(biamp_rx$));
-	} until (len(biamp_rx$) = 0);
-
-	BufferParse(buffer_collect);
-}
-
-
 /*******************************************************************************************
   Event Handlers
   (Uncomment and declare additional event handlers as needed)
@@ -291,12 +259,20 @@ CHANGE program_volume_in
 	biamp_tx$ = _pgm_level + " set level 1 " + ITOA(value_in) + " " + _delim;
 }
 
-CHANGE biamp_rx$
+THREADSAFE CHANGE biamp_rx$
 {
-	if(!biamp_initialized)
-		NegotiateInitialize();
-	else
-		BufferCollect();
+	while(1)
+	{
+		_buffer_collect = GATHER("$", biamp_rx$);
+		PRINT("Buffer Collect: %s\n", _buffer_collect);
+
+		if(!biamp_initialized)
+			NegotiateInitialize(_buffer_collect);
+		else if(biamp_initialized && !biamp_subscribed)
+			BiAmpSubScribeConfirm(_buffer_collect);
+		else if(FIND(_subscribe_token, _buffer_collect, 1) && biamp_subscribed)
+			SubscribeInterpreter(_buffer_collect);
+	}
 }
 
 CHANGE tcp_client_status
